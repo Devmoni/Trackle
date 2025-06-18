@@ -7,8 +7,6 @@ import {
   Container,
   Button,
   Box,
-  ThemeProvider,
-  createTheme,
   CssBaseline,
   IconButton,
   useMediaQuery,
@@ -22,65 +20,37 @@ import {
   Menu as MenuIcon,
   Add as AddIcon,
   Dashboard as DashboardIcon,
+  Brightness4 as Brightness4Icon,
+  Brightness7 as Brightness7Icon,
 } from '@mui/icons-material';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import StudentTable from './components/StudentTable';
 import StudentProfile from './components/StudentProfile';
 import { studentService } from './services/api';
 
-// Create a modern theme
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#2563eb', // Modern blue
-      light: '#60a5fa',
-      dark: '#1e40af',
-    },
-    secondary: {
-      main: '#7c3aed', // Modern purple
-      light: '#a78bfa',
-      dark: '#5b21b6',
-    },
-    background: {
-      default: '#f8fafc',
-      paper: '#ffffff',
-    },
-  },
-  typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h5: {
-      fontWeight: 600,
-    },
-    h6: {
-      fontWeight: 600,
-    },
-  },
-  shape: {
-    borderRadius: 8,
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          textTransform: 'none',
-          fontWeight: 500,
+const ThemeToggle = () => {
+  const { mode, toggleTheme } = useTheme();
+  return (
+    <IconButton 
+      onClick={toggleTheme} 
+      color="inherit"
+      sx={{ 
+        color: 'text.primary',
+        '&:hover': {
+          backgroundColor: 'action.hover',
         },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
-        },
-      },
-    },
-  },
-});
+      }}
+    >
+      {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+    </IconButton>
+  );
+};
 
 function App() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery('(max-width:600px)');
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -140,7 +110,7 @@ function App() {
   );
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider>
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
         <AppBar 
@@ -176,6 +146,7 @@ function App() {
             >
               Student Progress
             </Typography>
+            <ThemeToggle />
             {!isMobile && (
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <Button 
@@ -208,7 +179,7 @@ function App() {
             open={mobileOpen}
             onClose={handleDrawerToggle}
             ModalProps={{
-              keepMounted: true, // Better open performance on mobile
+              keepMounted: true,
             }}
             sx={{
               '& .MuiDrawer-paper': { 
@@ -228,7 +199,7 @@ function App() {
             flexGrow: 1,
             p: 3,
             width: '100%',
-            mt: '64px', // Height of AppBar
+            mt: '64px',
           }}
         >
           <Container maxWidth="xl">
