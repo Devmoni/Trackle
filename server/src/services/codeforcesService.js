@@ -40,35 +40,35 @@ const fetchUserSubmissions = async (handle) => {
 
 const processSubmissions = (submissions) => {
   const solvedProblems = new Set();
-  const problemsByRating = new Map();
-  const submissionsList = [];
+  const problemsByRating = {};
+  let totalRating = 0;
+  let solvedCount = 0;
 
   submissions.forEach(submission => {
-    if (submission.verdict === 'OK' && !solvedProblems.has(submission.problem.name)) {
-      solvedProblems.add(submission.problem.name);
-      
-      // Add to problems by rating
-      const rating = submission.problem.rating || 0;
-      problemsByRating.set(rating, (problemsByRating.get(rating) || 0) + 1);
-
-      // Add to submissions list
-      submissionsList.push({
-        problemId: submission.problem.contestId + submission.problem.index,
-        problemName: submission.problem.name,
-        rating: rating,
-        submissionTime: new Date(submission.creationTimeSeconds * 1000),
-        verdict: submission.verdict
-      });
+    if (submission.verdict === 'OK') {
+      const problemKey = `${submission.problem.contestId}${submission.problem.index}`;
+      if (!solvedProblems.has(problemKey)) {
+        solvedProblems.add(problemKey);
+        const rating = submission.problem.rating || 0;
+        if (rating > 0) {
+          problemsByRating[rating] = (problemsByRating[rating] || 0) + 1;
+          totalRating += rating;
+          solvedCount++;
+        }
+      }
     }
   });
 
+  // Convert problemsByRating to array format
+  const problemsByRatingArray = Object.entries(problemsByRating)
+    .map(([rating, count]) => ({ rating: parseInt(rating), count }))
+    .sort((a, b) => a.rating - b.rating);
+
   return {
-    totalSolved: solvedProblems.size,
-    problemsByRating: Array.from(problemsByRating.entries()).map(([rating, count]) => ({
-      rating,
-      count
-    })),
-    submissions: submissionsList
+    solvedProblems: Array.from(solvedProblems),
+    problemsByRating: problemsByRatingArray,
+    averageRating: solvedCount > 0 ? totalRating / solvedCount : 0,
+    totalSolved: solvedProblems.size
   };
 };
 
@@ -101,75 +101,61 @@ const sendInactivityEmail = async (student) => {
 
 const syncStudentData = async (student) => {
   try {
-    const [ratingHistory, submissions] = await Promise.all([
-      fetchUserRating(student.codeforcesHandle),
-      fetchUserSubmissions(student.codeforcesHandle),
-    ]);
+    // Fetch user rating history
+    const ratingResponse = await axios.get(
+      `https://codeforces.com/api/user.rating?handle=${student.codeforcesHandle}`
+    );
 
-    const lastSubmission = submissions[0];
-    const lastSubmissionDate = lastSubmission
-      ? new Date(lastSubmission.creationTimeSeconds * 1000)
-      : null;
+    if (ratingResponse.data.status === 'OK') {
+      const ratingHistory = ratingResponse.data.result;
+      student.ratingHistory = ratingHistory;
+      student.currentRating = ratingHistory.length > 0 ? ratingHistory[ratingHistory.length - 1].newRating : 0;
+      student.maxRating = Math.max(...ratingHistory.map(r => r.newRating), 0);
+    }
 
-    const problemSolvingStats = processSubmissions(submissions);
-    const currentRating = ratingHistory[ratingHistory.length - 1]?.newRating || 0;
-    const maxRating = Math.max(...ratingHistory.map((r) => r.newRating), 0);
+    // Fetch user submissions
+    const submissionsResponse = await axios.get(
+      `https://codeforces.com/api/user.status?handle=${student.codeforcesHandle}&count=1000`
+    );
 
-    // Process contest history with more details
-    const contestHistory = await Promise.all(ratingHistory.map(async (contest) => {
-      // Fetch contest details to get unsolved problems
-      let unsolvedProblems = [];
-      try {
-        const contestResponse = await axios.get(
-          `https://codeforces.com/api/contest.standings?contestId=${contest.contestId}&handles=${student.codeforcesHandle}`
-        );
-        if (contestResponse.data.status === 'OK') {
-          const problems = contestResponse.data.result.problems;
-          const solvedProblems = new Set(
-            submissions
-              .filter(s => s.contestId === contest.contestId && s.verdict === 'OK')
-              .map(s => s.problem.index)
-          );
-          unsolvedProblems = problems
-            .filter(p => !solvedProblems.has(p.index))
-            .map(p => p.index);
-        }
-      } catch (error) {
-        console.error(`Error fetching contest details for ${contest.contestId}:`, error);
-      }
+    if (submissionsResponse.data.status === 'OK') {
+      const submissions = submissionsResponse.data.result;
+      const problemStats = processSubmissions(submissions);
 
-      return {
-        contestId: contest.contestId,
-        contestName: contest.contestName,
-        rank: contest.rank,
-        oldRating: contest.oldRating,
-        newRating: contest.newRating,
-        ratingChange: contest.newRating - contest.oldRating,
-        date: new Date(contest.ratingUpdateTimeSeconds * 1000),
-        unsolvedProblems
+      // Calculate problems per day
+      const firstSubmission = submissions[submissions.length - 1];
+      const lastSubmission = submissions[0];
+      const daysActive = firstSubmission && lastSubmission
+        ? Math.ceil((new Date(lastSubmission.creationTimeSeconds * 1000) - 
+                    new Date(firstSubmission.creationTimeSeconds * 1000)) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      student.problemSolvingStats = {
+        ...problemStats,
+        problemsPerDay: daysActive > 0 ? problemStats.totalSolved / daysActive : 0,
+        recentSubmissions: submissions.slice(0, 20).map(sub => ({
+          problemName: `${sub.problem.contestId}${sub.problem.index} - ${sub.problem.name}`,
+          rating: sub.problem.rating,
+          verdict: sub.verdict,
+          submissionTime: new Date(sub.creationTimeSeconds * 1000).toISOString()
+        }))
       };
-    }));
-
-    await Student.findByIdAndUpdate(student._id, {
-      currentRating,
-      maxRating,
-      lastUpdated: new Date(),
-      contestHistory,
-      problemSolvingStats,
-      'inactivityTracking.lastSubmissionDate': lastSubmissionDate,
-    });
+    }
 
     // Check for inactivity
-    if (lastSubmissionDate) {
-      const daysSinceLastSubmission = Math.floor(
-        (new Date() - lastSubmissionDate) / (1000 * 60 * 60 * 24)
-      );
-      if (daysSinceLastSubmission >= 7) {
-        await sendInactivityEmail(student);
-      }
+    const lastSubmission = submissionsResponse.data.result[0];
+    if (lastSubmission) {
+      const lastActivity = new Date(lastSubmission.creationTimeSeconds * 1000);
+      const now = new Date();
+      const daysSinceLastActivity = Math.floor((now - lastActivity) / (1000 * 60 * 60 * 24));
+      student.isInactive = daysSinceLastActivity > 30;
     }
+
+    await student.save();
+    return student;
   } catch (error) {
     console.error(`Error syncing data for ${student.codeforcesHandle}:`, error);
+    throw error;
   }
 };
 

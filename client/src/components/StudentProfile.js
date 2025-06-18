@@ -1,425 +1,631 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box,
+  Paper,
   TextField,
   Button,
   Typography,
-  Paper,
+  Box,
   Grid,
-  Tabs,
-  Tab,
+  FormControlLabel,
+  Switch,
+  CircularProgress,
+  Alert,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
+  Chip,
+  IconButton,
+  Tooltip,
   Select,
   MenuItem,
-  Switch,
-  FormControlLabel,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  BarChart,
-  Bar,
-  ResponsiveContainer,
-} from 'recharts';
+  Save as SaveIcon,
+  ArrowBack as ArrowBackIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  Refresh as RefreshIcon,
+} from '@mui/icons-material';
 import { studentService } from '../services/api';
-import { format, subDays } from 'date-fns';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip as ChartTooltip,
+  Legend,
+} from 'chart.js';
 
-const StudentProfile = ({ studentId, onSave, viewOnly = false }) => {
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  ChartTooltip,
+  Legend
+);
+
+function StudentProfile({ studentId, onSave, viewOnly = false }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phoneNumber: '',
     codeforcesHandle: '',
     password: '',
+    emailReminders: true,
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [student, setStudent] = useState(null);
+  const [contestFilter, setContestFilter] = useState(30); // 30 days by default
+  const [problemFilter, setProblemFilter] = useState(30); // 30 days by default
 
-  const [activeTab, setActiveTab] = useState(0);
-  const [contestFilter, setContestFilter] = useState(30);
-  const [problemFilter, setProblemFilter] = useState(30);
-  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(true);
-  const [error, setError] = useState('');
-
-  const loadStudent = useCallback(async () => {
+  const fetchStudent = useCallback(async () => {
     try {
-      const response = await studentService.getStudentById(studentId);
-      setFormData(response.data);
-      setEmailRemindersEnabled(response.data.inactivityTracking.emailRemindersEnabled);
-    } catch (error) {
-      console.error('Error loading student:', error);
-      setError('Failed to load student data');
+      setLoading(true);
+      const data = await studentService.getStudent(studentId);
+      setStudent(data);
+      setFormData({
+        name: data.name,
+        email: data.email,
+        phoneNumber: data.phoneNumber,
+        codeforcesHandle: data.codeforcesHandle,
+        password: '',
+        emailReminders: data.emailReminders,
+      });
+      setError(null);
+    } catch (err) {
+      setError('Failed to fetch student data. Please try again later.');
+      console.error('Error fetching student:', err);
+    } finally {
+      setLoading(false);
     }
   }, [studentId]);
 
   useEffect(() => {
     if (studentId) {
-      loadStudent();
+      fetchStudent();
     }
-  }, [studentId, loadStudent]);
+  }, [studentId, fetchStudent]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
+    const { name, value, checked } = e.target;
+    setFormData(prev => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'emailReminders' ? checked : value
     }));
-    setError('');
-  };
-
-  const validateForm = () => {
-    if (!formData.name || !formData.email || !formData.phoneNumber || !formData.codeforcesHandle) {
-      setError('All fields are required');
-      return false;
-    }
-    if (!studentId && !formData.password) {
-      setError('Password is required for new students');
-      return false;
-    }
-    if (formData.password && formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return false;
-    }
-    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
-
     try {
+      setLoading(true);
       if (studentId) {
-        const updateData = { ...formData };
-        if (!updateData.password) {
-          delete updateData.password;
-        }
-        await studentService.updateStudent(studentId, {
-          ...updateData,
-          inactivityTracking: {
-            ...formData.inactivityTracking,
-            emailRemindersEnabled,
-          },
-        });
+        await studentService.updateStudent(studentId, formData);
       } else {
         await studentService.createStudent(formData);
       }
       onSave();
-    } catch (error) {
-      console.error('Error saving student:', error);
-      setError(error.response?.data?.message || 'Failed to save student');
+    } catch (err) {
+      setError('Failed to save student data. Please try again later.');
+      console.error('Error saving student:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const filteredContests = formData.contestHistory?.filter(
-    (contest) => new Date(contest.date) >= subDays(new Date(), contestFilter)
-  ) || [];
+  const getRatingColor = (rating) => {
+    if (!rating) return '#808080'; // Gray for no rating
+    if (rating >= 2400) return '#FF0000'; // Red
+    if (rating >= 2100) return '#FF8C00'; // Orange
+    if (rating >= 1900) return '#AA00AA'; // Purple
+    if (rating >= 1600) return '#0000FF'; // Blue
+    if (rating >= 1400) return '#03A89E'; // Cyan
+    if (rating >= 1200) return '#008000'; // Green
+    return '#808080'; // Gray
+  };
 
-  const filteredSubmissions = formData.problemSolvingStats?.submissions?.filter(
-    (submission) => new Date(submission.submissionTime) >= subDays(new Date(), problemFilter)
-  ) || [];
-
-  const problemsByRating = formData.problemSolvingStats?.problemsByRating || [];
-  const totalSolved = formData.problemSolvingStats?.totalSolved || 0;
-  const averageRating = filteredSubmissions.length > 0
-    ? filteredSubmissions.reduce((acc, curr) => acc + curr.rating, 0) / filteredSubmissions.length
-    : 0;
-  const problemsPerDay = problemFilter > 0
-    ? filteredSubmissions.length / problemFilter
-    : 0;
-
-  const formatDate = (date) => {
-    return format(new Date(date), 'MMM dd, yyyy');
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   };
 
   const formatRatingChange = (change) => {
-    const color = change >= 0 ? 'success.main' : 'error.main';
+    if (change === undefined || change === null) return 'N/A';
+    if (change > 0) return `+${change}`;
+    return change;
+  };
+
+  const getRatingChangeColor = (change) => {
+    if (change === undefined || change === null) return 'default';
+    if (change > 0) return 'success';
+    if (change < 0) return 'error';
+    return 'default';
+  };
+
+  if (loading && !student) {
     return (
-      <Typography component="span" color={color}>
-        {change >= 0 ? '+' : ''}{change}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
     );
+  }
+
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ mt: 2 }}>
+        {error}
+      </Alert>
+    );
+  }
+
+  const filteredContests = student?.contestHistory?.filter(contest => {
+    if (!contest?.date) return false;
+    const contestDate = new Date(contest.date);
+    const now = new Date();
+    const diffTime = Math.abs(now - contestDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= contestFilter;
+  }) || [];
+
+  const chartData = {
+    labels: filteredContests.map(contest => formatDate(contest.date)),
+    datasets: [
+      {
+        label: 'Rating',
+        data: filteredContests.map(contest => contest.newRating || 0),
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        tension: 0.4,
+        fill: true,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => `Rating: ${context.raw}`,
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: false,
+        grid: {
+          color: 'rgba(0, 0, 0, 0.1)',
+        },
+      },
+      x: {
+        grid: {
+          display: false,
+        },
+      },
+    },
   };
 
   return (
-    <Box sx={{ width: '100%', mt: 3 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h5" component="h2" gutterBottom>
-          {viewOnly ? 'Student Details' : studentId ? 'Edit Student' : 'Add New Student'}
+    <Box>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
+          {viewOnly ? 'Student Details' : (studentId ? 'Edit Student' : 'Add New Student')}
         </Typography>
-        {error && (
-          <Typography color="error" sx={{ mb: 2 }}>
-            {error}
-          </Typography>
+        {viewOnly && (
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={onSave}
+          >
+            Back to List
+          </Button>
         )}
-        <form onSubmit={handleSubmit}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                error={!!error && !formData.name}
-                disabled={viewOnly}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                error={!!error && !formData.email}
-                disabled={viewOnly}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Phone Number"
-                name="phoneNumber"
-                value={formData.phoneNumber}
-                onChange={handleChange}
-                required
-                error={!!error && !formData.phoneNumber}
-                disabled={viewOnly}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Codeforces Handle"
-                name="codeforcesHandle"
-                value={formData.codeforcesHandle}
-                onChange={handleChange}
-                required
-                error={!!error && !formData.codeforcesHandle}
-                disabled={viewOnly}
-              />
-            </Grid>
-            {!viewOnly && (
-              <Grid item xs={12} sm={6}>
+      </Box>
+
+      {!viewOnly && (
+        <Paper sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+          <form onSubmit={handleSubmit}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label={studentId ? "New Password (leave blank to keep current)" : "Password"}
-                  name="password"
-                  type="password"
-                  value={formData.password}
+                  label="Name"
+                  name="name"
+                  value={formData.name}
                   onChange={handleChange}
-                  required={!studentId}
-                  error={!!error && !studentId && !formData.password}
-                  helperText={studentId ? "Only fill if you want to change the password" : "Must be at least 6 characters"}
+                  required
                 />
               </Grid>
-            )}
-            {!viewOnly && (
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Phone Number"
+                  name="phoneNumber"
+                  value={formData.phoneNumber}
+                  onChange={handleChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Codeforces Handle"
+                  name="codeforcesHandle"
+                  value={formData.codeforcesHandle}
+                  onChange={handleChange}
+                  required
+                />
+              </Grid>
+              {!studentId && (
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Password"
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                  />
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={emailRemindersEnabled}
-                      onChange={(e) => setEmailRemindersEnabled(e.target.checked)}
+                      checked={formData.emailReminders}
+                      onChange={handleChange}
+                      name="emailReminders"
                     />
                   }
                   label="Enable Email Reminders"
                 />
               </Grid>
-            )}
-            {!viewOnly && (
               <Grid item xs={12}>
                 <Button
                   type="submit"
                   variant="contained"
                   color="primary"
-                  sx={{ mr: 2 }}
+                  startIcon={<SaveIcon />}
+                  disabled={loading}
                 >
-                  {studentId ? 'Update' : 'Create'} Student
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => onSave()}
-                >
-                  Cancel
+                  {loading ? 'Saving...' : 'Save'}
                 </Button>
               </Grid>
-            )}
-            {viewOnly && (
-              <Grid item xs={12}>
-                <Button
-                  variant="outlined"
-                  onClick={() => onSave()}
-                >
-                  Back to List
-                </Button>
-              </Grid>
-            )}
+            </Grid>
+          </form>
+        </Paper>
+      )}
+
+      {viewOnly && student && (
+        <>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography color="textSecondary" gutterBottom>
+                    Current Rating
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    component="div"
+                    sx={{ color: getRatingColor(student.currentRating) }}
+                  >
+                    {student.currentRating || 'N/A'}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography color="textSecondary" gutterBottom>
+                    Max Rating
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    component="div"
+                    sx={{ color: getRatingColor(student.maxRating) }}
+                  >
+                    {student.maxRating || 'N/A'}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography color="textSecondary" gutterBottom>
+                    Status
+                  </Typography>
+                  <Chip
+                    label={student.isInactive ? 'Inactive' : 'Active'}
+                    color={student.isInactive ? 'warning' : 'success'}
+                    sx={{ mt: 1 }}
+                  />
+                </CardContent>
+              </Card>
+            </Grid>
           </Grid>
-        </form>
-      </Paper>
 
-      {studentId && (
-        <Box sx={{ mt: 4 }}>
-          <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-            <Tab label="Contest History" />
-            <Tab label="Problem Solving Data" />
-          </Tabs>
-
-          {activeTab === 0 && (
-            <Box sx={{ mt: 2 }}>
-              <FormControl sx={{ mb: 2 }}>
-                <InputLabel>Time Period</InputLabel>
-                <Select
-                  value={contestFilter}
-                  onChange={(e) => setContestFilter(e.target.value)}
-                  label="Time Period"
-                >
-                  <MenuItem value={30}>Last 30 days</MenuItem>
-                  <MenuItem value={90}>Last 90 days</MenuItem>
-                  <MenuItem value={365}>Last 365 days</MenuItem>
-                </Select>
-              </FormControl>
-
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Rating Progress
-                </Typography>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={filteredContests}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date" 
-                      tickFormatter={(date) => formatDate(date)}
-                    />
-                    <YAxis />
-                    <Tooltip 
-                      labelFormatter={(date) => formatDate(date)}
-                      formatter={(value) => [`Rating: ${value}`, 'Rating']}
-                    />
-                    <Legend />
-                    <Line 
-                      type="monotone" 
-                      dataKey="newRating" 
-                      stroke="#8884d8" 
-                      name="Rating"
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Paper>
-
+          <Paper sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+            <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>
-                Recent Contests
+                Rating Progress
               </Typography>
-              {filteredContests.length === 0 ? (
-                <Typography color="text.secondary" sx={{ mt: 2 }}>
-                  No contests found in the selected time period.
-                </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Time Period</InputLabel>
+                  <Select
+                    value={contestFilter}
+                    label="Time Period"
+                    onChange={(e) => setContestFilter(e.target.value)}
+                  >
+                    <MenuItem value={30}>Last 30 Days</MenuItem>
+                    <MenuItem value={90}>Last 90 Days</MenuItem>
+                    <MenuItem value={365}>Last Year</MenuItem>
+                  </Select>
+                </FormControl>
+                <Tooltip title="Refresh Data">
+                  <IconButton onClick={fetchStudent} color="primary">
+                    <RefreshIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              {filteredContests.length > 0 ? (
+                <Box sx={{ height: 300 }}>
+                  <Line data={chartData} options={chartOptions} />
+                </Box>
               ) : (
-                filteredContests.map((contest) => (
-                  <Card key={contest.contestId} sx={{ mb: 2 }}>
-                    <CardContent>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12}>
-                          <Typography variant="h6" color="primary">
-                            {contest.contestName}
-                          </Typography>
-                          <Typography color="text.secondary" gutterBottom>
-                            {formatDate(contest.date)}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography>
-                            <strong>Rank:</strong> {contest.rank}
-                          </Typography>
-                          <Typography>
-                            <strong>Old Rating:</strong> {contest.oldRating}
-                          </Typography>
-                          <Typography>
-                            <strong>New Rating:</strong> {contest.newRating}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Typography>
-                            <strong>Rating Change:</strong> {formatRatingChange(contest.ratingChange)}
-                          </Typography>
-                          {contest.unsolvedProblems && contest.unsolvedProblems.length > 0 && (
-                            <Typography>
-                              <strong>Unsolved Problems:</strong>{' '}
-                              {contest.unsolvedProblems.join(', ')}
-                            </Typography>
-                          )}
-                        </Grid>
-                      </Grid>
-                    </CardContent>
-                  </Card>
-                ))
+                <Alert severity="info">No contest data available for the selected time period.</Alert>
               )}
             </Box>
-          )}
+          </Paper>
 
-          {activeTab === 1 && (
-            <Box sx={{ mt: 2 }}>
-              <FormControl sx={{ mb: 2 }}>
+          <Paper sx={{ p: 3, borderRadius: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Problem Solving Statistics
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
                 <InputLabel>Time Period</InputLabel>
                 <Select
                   value={problemFilter}
-                  onChange={(e) => setProblemFilter(e.target.value)}
                   label="Time Period"
+                  onChange={(e) => setProblemFilter(e.target.value)}
                 >
-                  <MenuItem value={7}>Last 7 days</MenuItem>
-                  <MenuItem value={30}>Last 30 days</MenuItem>
-                  <MenuItem value={90}>Last 90 days</MenuItem>
+                  <MenuItem value={7}>Last 7 Days</MenuItem>
+                  <MenuItem value={30}>Last 30 Days</MenuItem>
+                  <MenuItem value={90}>Last 90 Days</MenuItem>
                 </Select>
               </FormControl>
-
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6">Statistics</Typography>
-                      <Typography>Total Problems Solved: {totalSolved}</Typography>
-                      <Typography>Average Rating: {averageRating.toFixed(2)}</Typography>
-                      <Typography>Problems per Day: {problemsPerDay.toFixed(2)}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                <Grid item xs={12}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Problems Solved by Rating
-                    </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={problemsByRating}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="rating" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="count" fill="#8884d8" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-              </Grid>
             </Box>
-          )}
-        </Box>
+
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Total Problems Solved
+                    </Typography>
+                    <Typography variant="h4" component="div">
+                      {student?.problemSolvingStats?.totalSolved || 0}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Average Problem Rating
+                    </Typography>
+                    <Typography variant="h4" component="div">
+                      {student?.problemSolvingStats?.averageRating 
+                        ? Math.round(student.problemSolvingStats.averageRating) 
+                        : 'N/A'}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Problems per Day
+                    </Typography>
+                    <Typography variant="h4" component="div">
+                      {student?.problemSolvingStats?.problemsPerDay 
+                        ? student.problemSolvingStats.problemsPerDay.toFixed(1)
+                        : '0.0'}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            <Paper sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Problems Solved by Rating
+              </Typography>
+              {student?.problemSolvingStats?.problemsByRating?.length > 0 ? (
+                <Box sx={{ height: 300 }}>
+                  <Line
+                    data={{
+                      labels: student.problemSolvingStats.problemsByRating.map(p => p.rating),
+                      datasets: [
+                        {
+                          label: 'Problems Solved',
+                          data: student.problemSolvingStats.problemsByRating.map(p => p.count),
+                          borderColor: '#2563eb',
+                          backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                          tension: 0.4,
+                          fill: true,
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: {
+                        legend: {
+                          display: false,
+                        },
+                        tooltip: {
+                          callbacks: {
+                            label: (context) => `Solved: ${context.raw}`,
+                          },
+                        },
+                      },
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          grid: {
+                            color: 'rgba(0, 0, 0, 0.1)',
+                          },
+                        },
+                        x: {
+                          grid: {
+                            display: false,
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Alert severity="info">No problem-solving data available.</Alert>
+              )}
+            </Paper>
+
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Recent Submissions
+              </Typography>
+              {student?.problemSolvingStats?.recentSubmissions?.length > 0 ? (
+                <Grid container spacing={2}>
+                  {student.problemSolvingStats.recentSubmissions
+                    .filter(submission => {
+                      const submissionDate = new Date(submission.submissionTime);
+                      const now = new Date();
+                      const diffTime = Math.abs(now - submissionDate);
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                      return diffDays <= problemFilter;
+                    })
+                    .map((submission, index) => (
+                      <Grid item xs={12} md={6} lg={4} key={index}>
+                        <Card>
+                          <CardContent>
+                            <Typography variant="subtitle1" gutterBottom>
+                              {submission.problemName}
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary" gutterBottom>
+                              {formatDate(submission.submissionTime)}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                              <Chip
+                                label={`Rating: ${submission.rating || 'N/A'}`}
+                                size="small"
+                                sx={{ color: getRatingColor(submission.rating) }}
+                              />
+                              <Chip
+                                label={submission.verdict}
+                                size="small"
+                                color={submission.verdict === 'OK' ? 'success' : 'error'}
+                              />
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                </Grid>
+              ) : (
+                <Alert severity="info">No recent submissions found in the selected time period.</Alert>
+              )}
+            </Paper>
+          </Paper>
+
+          <Paper sx={{ p: 3, borderRadius: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Recent Contests
+            </Typography>
+            {filteredContests.length === 0 ? (
+              <Alert severity="info">No contests found in the selected time period.</Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {filteredContests.map((contest) => (
+                  <Grid item xs={12} md={6} lg={4} key={contest.contestId}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="subtitle1" gutterBottom>
+                          {contest.contestName}
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" gutterBottom>
+                          {formatDate(contest.date)}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                          <Chip
+                            label={`Rank: ${contest.rank || 'N/A'}`}
+                            size="small"
+                          />
+                          <Chip
+                            icon={contest.ratingChange > 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                            label={formatRatingChange(contest.ratingChange)}
+                            color={getRatingChangeColor(contest.ratingChange)}
+                            size="small"
+                          />
+                        </Box>
+                        {contest.unsolvedProblems?.length > 0 && (
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="body2" color="textSecondary">
+                              Unsolved Problems:
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {contest.unsolvedProblems.map((problem) => (
+                                <Chip
+                                  key={problem}
+                                  label={problem}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </Paper>
+        </>
       )}
     </Box>
   );
-};
+}
 
 export default StudentProfile; 
