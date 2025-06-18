@@ -24,22 +24,44 @@ export const ThemeProvider = ({ children }) => {
         palette: {
           mode,
           primary: {
-            main: '#2563eb',
-            light: '#60a5fa',
-            dark: '#1e40af',
+            main: '#FF6B00', // Vibrant orange
+            light: '#FF8533',
+            dark: '#CC5500',
+            contrastText: '#FFFFFF',
           },
           secondary: {
-            main: '#7c3aed',
-            light: '#a78bfa',
-            dark: '#5b21b6',
+            main: '#FF0000', // Bright red
+            light: '#FF3333',
+            dark: '#CC0000',
+            contrastText: '#FFFFFF',
           },
           background: {
-            default: mode === 'light' ? '#f8fafc' : '#0f172a',
-            paper: mode === 'light' ? '#ffffff' : '#1e293b',
+            default: mode === 'light' ? '#FFFFFF' : '#1A1A1A', // White / Dark grey
+            paper: mode === 'light' ? '#F5F5F5' : '#2D2D2D', // Light grey / Darker grey
           },
           text: {
-            primary: mode === 'light' ? '#1e293b' : '#f8fafc',
-            secondary: mode === 'light' ? '#64748b' : '#94a3b8',
+            primary: mode === 'light' ? '#000000' : '#FFFFFF', // Black / White
+            secondary: mode === 'light' ? '#666666' : '#CCCCCC', // Dark grey / Light grey
+          },
+          error: {
+            main: '#FF0000', // Red
+            light: '#FF3333',
+            dark: '#CC0000',
+          },
+          warning: {
+            main: '#FF6B00', // Orange
+            light: '#FF8533',
+            dark: '#CC5500',
+          },
+          info: {
+            main: '#666666', // Grey
+            light: '#999999',
+            dark: '#333333',
+          },
+          success: {
+            main: '#00CC00', // Green
+            light: '#33CC33',
+            dark: '#009900',
           },
         },
         typography: {
@@ -60,6 +82,24 @@ export const ThemeProvider = ({ children }) => {
               root: {
                 textTransform: 'none',
                 fontWeight: 500,
+                '&:hover': {
+                  backgroundColor: mode === 'light' ? '#FF8533' : '#CC5500',
+                },
+              },
+              contained: {
+                backgroundColor: mode === 'light' ? '#FF6B00' : '#FF8533',
+                color: '#FFFFFF',
+                '&:hover': {
+                  backgroundColor: mode === 'light' ? '#CC5500' : '#FF6B00',
+                },
+              },
+              outlined: {
+                borderColor: mode === 'light' ? '#FF6B00' : '#FF8533',
+                color: mode === 'light' ? '#FF6B00' : '#FF8533',
+                '&:hover': {
+                  borderColor: mode === 'light' ? '#CC5500' : '#FF6B00',
+                  backgroundColor: mode === 'light' ? 'rgba(255, 107, 0, 0.04)' : 'rgba(255, 133, 51, 0.08)',
+                },
               },
             },
           },
@@ -67,16 +107,51 @@ export const ThemeProvider = ({ children }) => {
             styleOverrides: {
               root: {
                 boxShadow: mode === 'light' 
-                  ? '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)'
-                  : '0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3)',
+                  ? '0 2px 4px rgba(0, 0, 0, 0.1)'
+                  : '0 2px 4px rgba(0, 0, 0, 0.3)',
+                backgroundColor: mode === 'light' ? '#FFFFFF' : '#2D2D2D',
               },
             },
           },
           MuiAppBar: {
             styleOverrides: {
               root: {
-                backgroundColor: mode === 'light' ? '#ffffff' : '#1e293b',
-                color: mode === 'light' ? '#1e293b' : '#f8fafc',
+                backgroundColor: mode === 'light' ? '#FFFFFF' : '#1A1A1A',
+                color: mode === 'light' ? '#000000' : '#FFFFFF',
+                boxShadow: mode === 'light' 
+                  ? '0 1px 3px rgba(0, 0, 0, 0.1)'
+                  : '0 1px 3px rgba(0, 0, 0, 0.3)',
+              },
+            },
+          },
+          MuiTableCell: {
+            styleOverrides: {
+              root: {
+                borderBottom: `1px solid ${mode === 'light' ? '#E0E0E0' : '#404040'}`,
+              },
+              head: {
+                fontWeight: 600,
+                backgroundColor: mode === 'light' ? '#F5F5F5' : '#2D2D2D',
+                color: mode === 'light' ? '#000000' : '#FFFFFF',
+              },
+            },
+          },
+          MuiTableRow: {
+            styleOverrides: {
+              root: {
+                '&:hover': {
+                  backgroundColor: mode === 'light' ? 'rgba(255, 107, 0, 0.04)' : 'rgba(255, 133, 51, 0.08)',
+                },
+              },
+            },
+          },
+          MuiIconButton: {
+            styleOverrides: {
+              root: {
+                color: mode === 'light' ? '#FF6B00' : '#FF8533',
+                '&:hover': {
+                  backgroundColor: mode === 'light' ? 'rgba(255, 107, 0, 0.04)' : 'rgba(255, 133, 51, 0.08)',
+                },
               },
             },
           },
