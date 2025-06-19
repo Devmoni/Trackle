@@ -96,4 +96,12 @@ The API documentation can be found in the `server/docs` directory.
 2. Create your feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a new Pull Request 
+5. Create a new Pull Request
+
+## Demo Video
+
+You can watch a demo of the Student Progress Management System below:
+
+<video src="client/public/video.webm" controls width="600">
+  Your browser does not support the video tag.
+</video> 
