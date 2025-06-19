@@ -88,7 +88,7 @@ student-progress-system/
 
 ## API Documentation
 
-The API documentation can be found in the `server/docs` directory.
+The API documentation can be found in the `docs.md`.
 
 ## Contributing
 
